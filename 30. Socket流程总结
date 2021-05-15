@@ -1,0 +1,61 @@
+# Socket流程总结
+## 概述
+Socket是应用层与TCP/IP协议栈通信的中间抽象层，其作用是为应用层提供API，实现上层应用的协议无关性。Socket将复杂的TCP/IP协议栈隐藏在接口后面，对应用层而言，一组接口即可让Socket去组织数据，以符合指定的协议。
+
+### Socket一般可分为三类：
+1.	基于TCP的Socket： 提供给应用层一种面向连接的、可靠的字节流服务；如HTTP、FTP、TELNET等；
+2.	基于UDP的Socket： 提供给应用层一种非连接的、有报文边界的、不可靠的数据报服务；
+3.	基于RawIP的Socket：与UDP类似，但它的特点是能够使应用程序直接访问网络层；如Ping、Traceroute、Ospf等；
+
+## 基于TCP的Socket应用
+Server与Client两端交互：
+1.	Server端在一个知名端口创建Socket，监听连接的到达；
+2.	Client端创建Socket后，向Server端的知名端口发送连接请求；
+3.	Server端监听到Client端的连接请求，创建子Socket，此子Socket用于和Client端的数据交互，而用于监听的Socket则可继续监听其他Client端的连接请求；
+4.	Server端接受Client端的连接请求后，即可与该Client端进行数据交互；
+5.	数据交互完毕后，由Server或Client端发起终止连接的请求；
+ 
+## 基于UDP的Socket应用
+### 单播应用：Server与Client两端交互：
+1.	Server端创建Socket，并绑定一个知名端口，等待接收数据；
+2.	Client端创建Socket后，向Server端发送数据；
+3.	Server端接收到Client端的数据后，开始与Client端交互数据；
+4.	数据交互完毕后，由Server和Client各自关闭Socket；
+ 
+### 组播应用：Server与Client两端交互：
+1.	作为发送组播报文的一方，在创建Socket后，需要设置Socket的IP层选项IP_MULTICAST_IF，设置组播报文的发送接口；
+2.	作为接收组播报文的一方，在创建Socket后，绑定到知名端口，需要设置Socket的IP选项IP_ADD_MEMBERSHIP中指定的接口上加入多播组，即可接收组播报文；
+ 
+### 广播应用：Server与Client两端交互：
+1.	作为发送广播报文的一方，在创建Socket后，需要设置Socket的选项SO_BROADCAST允许该Socket发送广播报文，然后设置Socket的选项SO_SENDDATAIF指定发送广播报文的接口；
+2.	作为接收广播报文的一方，只需创建Socket后，绑定到知名端口后即可接收广播报文；
+ 
+## 基于RawIP的Socket应用
+基于单播的RawIP应用，与UDP的区别在于调用bind绑定时，只需设定接收哪个协议的数据，而不需要设置端口。
+
+## 基于I/O复用的Socket应用
+等待期望的通知，不是阻塞于I/O系统调用，而是阻塞在select系统调用，TCP/UDP/RawIP都可用。
+1.	Server端创建Socket，指定所要接收哪个协议的数据；
+2.	Server端设置select调用的超时时间和期望接收通知的Socket；
+3.	Server端调用select等待通知的到达，若收到通知，调用接收函数来接收Client端的数据；
+4.	Client端创建Socket，调用sendto后向Server端发送数据；
+5.	Server端收到Client端的数据后，交互开始；
+6.	数据交互完毕后，Server和Client端各自关闭Socket；
+ 
+
+
+## 基于异步的Socket应用
+### 异步Socket有两种：
+1.	消息驱动：
+ASYN_READ：读，应用程序收到消息后调用recv等函数，如果接收函数返回正数，返回值就是接收的字节数；如果是0，表明对端已经关闭连接；如果是负数表明目前没有数据，不用再读了，等下一个消息吧；
+ASYN_WRITE：写，这个一般在tcp中用，当一次没有办法将用户send函数中的数据完全发送完毕，剩余部分要等待这个消息到来时再发送。但是，应用程序中调用connect后，不能等待这个消息来再发送数据，因为链接成功之后socket不发送这个消息，而是发送ASYN_CONNECT；
+ASYN_CLOSE：关闭，当SOCKET发现对端关闭连接时，发送此消息给应用程序，这时候应用程序就可以调用close来关闭socket了；
+ASYN_ACCEPT：正在listen的socket有连接建立，需要accept；
+ASYN_PEERCLOSE：对方关闭连接，收到这个消息，表明对端已经关闭连接(或对端不再发送数据)，一般对tcp连接的被动close操作放在这个消息的处理下；
+ASYN_KEEPALIVEDOWN：当保活定时器超时，应用程序会收到此消息；
+
+2.	回调函数：
+在收到数据时，则是通过用户提供的回调函数来处理收到的数据。回调函数根据其传入数据的不同可以有两种：
+（1）	传入的数据是普通的数据buffer；
+（2）	传入的数据是MBUF形式，应用程序可以设置。如果传入的是MBUF形式，应用程序应该在回调函数中将MBUF释放掉或将该MBUF发送出去。
+ 
